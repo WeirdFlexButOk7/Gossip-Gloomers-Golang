@@ -5,6 +5,7 @@ import (
     "log"
     "sync"
     "fmt"
+    "time"
 
     maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
@@ -56,6 +57,30 @@ func (c *Container) NotPresent(uid string) bool {
     return true
 }
 
+func replicate(n *maelstrom.Node, uid string, value int, node string) {
+    for {
+        body := map[string]any{
+            "type": "store",
+            "uid": uid,
+            "message": value,
+        }
+
+        done := make(chan struct{})
+
+        n.RPC(node, body, func(msg maelstrom.Message) error {
+            close(done)
+            return nil
+        })
+
+        select {
+        case <-done:
+            return
+        case <-time.After(500 * time.Millisecond):
+            
+        }
+    }
+}
+
 func main() {
     n := maelstrom.NewNode()
     c := Container{
@@ -70,15 +95,15 @@ func main() {
             return err
         }
 
-        c.Set(int(body["message"].(float64)))
-
         sendNode := map[string]any{
             "type": "store",
             "message": body["message"],
             "uid": n.ID() + fmt.Sprintf("%d", int(body["message"].(float64))),
         }
 
-        n.Send(n.ID(), sendNode);
+        n.RPC(n.ID(), sendNode, func(msg maelstrom.Message) error {
+            return nil
+        })
 
         resp := map[string]any{
             "type": "broadcast_ok",
@@ -137,16 +162,21 @@ func main() {
         if c.NotPresent(body["uid"].(string)) {
             c.Set(int(body["message"].(float64)))
             for _, node := range c.GetTop(n.ID()) {
-                n.Send(node, body)
+                go replicate(n, body["uid"].(string), int(body["message"].(float64)), node)
             }
         }
 
-        return nil
+        resp := map[string]any{
+            "type": "store_ok",
+        }
+
+        return n.Reply(msg, resp)
     })
 
     if err := n.Run(); err != nil {
         log.Fatal(err)
     }
+
 }
 /*
 
