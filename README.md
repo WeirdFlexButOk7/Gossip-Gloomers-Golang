@@ -4,4 +4,4 @@
 
 This repo contains my own implementation for these challenges in Golang. Currently under development, hoping to complete it soon.
 
-To run these solutions locally, ensure you install [maelstrom](https://github.com/jepsen-io/maelstrom/releases/tag/v0.2.3) and unpack the tarball in root directory of this repo.
+To run these solutions locally, ensure you install [maelstrom](https://github.com/jepsen-io/maelstrom/releases/tag/v0.2.3) and unpack the tarball in root directory of this repo. Each challenge has `eval.sh` script to test the implementation.
