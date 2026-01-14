@@ -1,1 +1,1 @@
-../maelstrom/maelstrom test -w broadcast --bin broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition
+../maelstrom/maelstrom test -w broadcast --bin broadcast --node-count 25 --time-limit 20 --rate 100 --latency 100

@@ -58,11 +58,13 @@ func (c *Container) NotPresent(uid string) bool {
 }
 
 func replicate(n *maelstrom.Node, uid string, value int, node string) {
+    cnt := int(2)
     for {
         body := map[string]any{
             "type": "store",
             "uid": uid,
             "message": value,
+            "parent": n.ID(),
         }
 
         done := make(chan struct{})
@@ -75,8 +77,9 @@ func replicate(n *maelstrom.Node, uid string, value int, node string) {
         select {
         case <-done:
             return
-        case <-time.After(500 * time.Millisecond):
-            
+        case <-time.After(time.Duration(cnt) * time.Second):
+            cnt++
+            log.Printf("Retry replicating %d to %s", value, node)
         }
     }
 }
@@ -95,15 +98,22 @@ func main() {
             return err
         }
 
-        sendNode := map[string]any{
-            "type": "store",
-            "message": body["message"],
-            "uid": n.ID() + fmt.Sprintf("%d", int(body["message"].(float64))),
-        }
+        // n.RPC(n.ID(), sendNode, func(msg maelstrom.Message) error {
+            // return nil
+        // })
+        
+        message := int(body["message"].(float64))
+        uid := fmt.Sprintf("%d-", int(body["msg_id"].(float64))) + fmt.Sprintf("%d", message);
 
-        n.RPC(n.ID(), sendNode, func(msg maelstrom.Message) error {
-            return nil
-        })
+        if c.NotPresent(uid) {
+            log.Printf("[%s] Storing NEW message %d (uid=%s)", n.ID(), message, uid)
+            c.Set(message)
+            for _, node := range c.GetTop(n.ID()) {
+                go replicate(n, uid, message, node)
+            }
+        } else {
+            log.Printf("[%s] DUPLICATE message %d (uid=%s)", n.ID(), message, uid)
+        }
 
         resp := map[string]any{
             "type": "broadcast_ok",
@@ -135,13 +145,18 @@ func main() {
         rawTopo := body["topology"].(map[string]any)
         topo := make(map[string][]string)
 
-        for node, neigh := range rawTopo {
-            neighSlice := neigh.([]any)
-            neighbors := make([]string, 0, len(neighSlice))
-            for _, n := range neighSlice {
-                neighbors = append(neighbors, n.(string))
+        for node, _ := range rawTopo {
+            // neighSlice := _.([]any)
+            // neighbors := make([]string, 0, len(neighSlice))
+            // for _, n := range neighSlice {
+            //     neighbors = append(neighbors, n.(string))
+            // }
+            // topo[node] = neighbors
+
+            if node != "n0" {
+                topo[node] = []string{"n0"}
+                topo["n0"] = append(topo["n0"], node)
             }
-            topo[node] = neighbors
         }
 
         c.SetTop(topo)
@@ -158,11 +173,13 @@ func main() {
         if err := json.Unmarshal(msg.Body, &body); err != nil {
             return err
         }
-        
+
         if c.NotPresent(body["uid"].(string)) {
             c.Set(int(body["message"].(float64)))
             for _, node := range c.GetTop(n.ID()) {
-                go replicate(n, body["uid"].(string), int(body["message"].(float64)), node)
+                if node != body["parent"].(string) {
+                    go replicate(n, body["uid"].(string), int(body["message"].(float64)), node)
+                }
             }
         }
 
