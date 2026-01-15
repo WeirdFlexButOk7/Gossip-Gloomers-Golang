@@ -11,7 +11,7 @@ import (
 
 func main() {
     n := maelstrom.NewNode()
-    kv := maelstrom.NewSeqKV(n)
+    kv := maelstrom.NewLinKV(n)
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
