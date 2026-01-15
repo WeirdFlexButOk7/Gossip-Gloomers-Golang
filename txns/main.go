@@ -8,7 +8,8 @@ import (
     maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
-// not handling G0 anomaly, test is broken, planning to handle in challenge 6c
+// g0, g1a, g1b, g1c in this commit
+// similar to how mvcc works.
 
 func main() {
     n := maelstrom.NewNode()
@@ -18,8 +19,16 @@ func main() {
 
     n.Handle("txn", func(msg maelstrom.Message) error {
         var body map[string]any
+        local := make(map[string]int)
+
+        errResp := map[string]any{
+            "type": "error",
+            "code": maelstrom.TxnConflict,
+            "text": "txn abort",
+        }
+
         if err := json.Unmarshal(msg.Body, &body); err != nil {
-            return err
+            return n.Reply(msg, errResp)
         }
 
         resp := map[string]any{
@@ -36,19 +45,38 @@ func main() {
             key := string(int(arr[1].(float64)))
 
             if op == "w" {
+                // kv.Write(ctx, key, intValue);
                 intValue := int(arr[2].(float64))
-                kv.Write(ctx, key, intValue);
+                local[key] = intValue
             } else {
-                intValue, _ := kv.ReadInt(ctx, key)
+                // intValue, _ := kv.ReadInt(ctx, key)
+                intValue, ok := local[key]
+                if !ok {
+                    intValue, _ = kv.ReadInt(ctx, key)
+                }
                 arr[2] = intValue
             }
 
             out = append(out, arr)
-
         }
 
         resp["txn"] = out
 
+        for key, value := range local {
+            // kv.Write(ctx, key, value)
+            for {
+                cur, err := kv.ReadInt(ctx, key)
+                if err != nil {
+                    if kv.CompareAndSwap(ctx, key, nil, value, true) == nil {
+                        break
+                    }
+                    continue
+                }
+                if kv.CompareAndSwap(ctx, key, cur, value, false) == nil {
+                    break
+                }
+            }
+        }
         return n.Reply(msg, resp)
     })
 
