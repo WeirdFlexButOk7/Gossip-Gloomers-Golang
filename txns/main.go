@@ -8,6 +8,8 @@ import (
     maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
+// not handling G0 anomaly, test is broken, planning to handle in challenge 6c
+
 func main() {
     n := maelstrom.NewNode()
     kv := maelstrom.NewSeqKV(n)
